@@ -1,0 +1,40 @@
+[
+  {
+    "name": "Разработчик ПО",
+    "description": "Создание программного обеспечения",
+    "competition": 7,
+    "demand": 9,
+    "trends": 8,
+    "salary_entry": 6,
+    "salary_average": 8,
+    "salary_peak": 9,
+    "entry_threshold": 6,
+    "learning_time": 7,
+    "stress_level": 7,
+    "creativity": 6,
+    "remote_work": 9,
+    "freelance_potential": 8,
+    "horizontal_growth": 9,
+    "hard_skills_score": 8,
+    "soft_skills_score": 7
+  },
+  {
+    "name": "Дизайнер",
+    "description": "Разработка визуальных концепций",
+    "competition": 8,
+    "demand": 7,
+    "trends": 9,
+    "salary_entry": 5,
+    "salary_average": 7,
+    "salary_peak": 8,
+    "entry_threshold": 5,
+    "learning_time": 6,
+    "stress_level": 6,
+    "creativity": 9,
+    "remote_work": 8,
+    "freelance_potential": 9,
+    "horizontal_growth": 7,
+    "hard_skills_score": 7,
+    "soft_skills_score": 8
+  }
+]

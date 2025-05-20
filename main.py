@@ -1,76 +1,94 @@
-# main.py
-import logging
-from datetime import datetime
-
-from telegram import LinkPreviewOptions # <-- Добавлен импорт
-from telegram.ext import Application, ApplicationBuilder, Defaults
-from telegram.constants import ParseMode
-
-from config import BOT_TOKEN
-import database
-import handlers
-
-# Включение логирования
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+import asyncio
+import platform
+import nest_asyncio
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, \
+    ConversationHandler  # Добавляем MessageHandler, filters
+from config.settings import settings
+from handlers.common_handlers import start, handle_main_menu_choice, back_to_main_menu
+from db.initial_data_loader import initialize_all_data
+from handlers.income_handlers import start_income_dialog, handle_income_input, cancel_income_dialog, show_income_method_details, GET_INCOME_AMOUNT, show_recommended_methods
+from handlers.factor_handlers import (
+    start_factor_dialog, handle_factor_rating, cancel_factor_dialog,
+    ASK_F1_MOTIVATION, ASK_F2_LIFE_EXPERIENCE, ASK_F3_PERSISTENCE,
+    ASK_F4_FLEXIBILITY, ASK_F5_EMOTIONAL_INTELLIGENCE, ASK_F6_HEALTH_ENERGY,
+    ASK_F7_SELF_PERCEPTION, ASK_F8_ENVIRONMENT_SUPPORT, ASK_F9_RESOURCE_ACCESS
 )
-logger = logging.getLogger(__name__)
 
-def main() -> None:
+if platform.system() == "Windows":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+nest_asyncio.apply()
+
+async def main():
     """
-    Главная функция для запуска Telegram-бота.
+    Основная асинхронная функция для запуска Telegram бота.
     """
-    logger.info("Инициализация базы данных PostgreSQL...")
-    try:
-        database.init_db()
-        logger.info("База данных PostgreSQL успешно инициализирована.")
-    except Exception as e:
-        logger.critical(f"КРИТИЧЕСКАЯ ОШИБКА: Не удалось инициализировать базу данных PostgreSQL: {e}")
-        logger.critical("Убедитесь, что сервер PostgreSQL запущен и настроен правильно в config.py.")
-        logger.critical("Бот не может быть запущен без БД.")
-        return
+    print("Инициализация данных базы данных...")
+    initialize_all_data()
 
-    # Глобальные данные для бота, которые будут доступны через context.application.bot_data
-    app_data = {
-        "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "admin_ids": [123456789], # Пример ID администраторов
-    }
+    print("Запуск Telegram бота...")
+    application = Application.builder().token(settings.BOT_TOKEN).build()
 
-    # Установка ParseMode.HTML и отключение предпросмотра ссылок по умолчанию
-    # Исправлено в соответствии с предупреждением:
-    defaults = Defaults(
-        parse_mode=ParseMode.HTML,
-        link_preview_options=LinkPreviewOptions(is_disabled=True) # <-- Изменено
+    # ConversationHandler для диалога "Доход"
+    income_conversation_handler = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(start_income_dialog, pattern='^mode_income$'),
+        ],
+        states={
+            GET_INCOME_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_income_input)],
+        },
+        fallbacks=[
+            CommandHandler("cancel", cancel_income_dialog),
+            CallbackQueryHandler(cancel_income_dialog, pattern='^cancel_income_dialog$'),
+            CallbackQueryHandler(back_to_main_menu, pattern='^back_to_main_menu$')
+        ],
+        allow_reentry=True,
+        per_message=False
     )
 
-    logger.info("Создание экземпляра приложения бота...")
-    application_builder = ApplicationBuilder().token(BOT_TOKEN).defaults(defaults)
+    # ConversationHandler для опроса факторов контекста
+    factor_survey_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(start_factor_dialog, pattern='^start_factor_survey$')],
+        states={
+            ASK_F1_MOTIVATION: [CallbackQueryHandler(handle_factor_rating, pattern='^rating_')],
+            ASK_F2_LIFE_EXPERIENCE: [CallbackQueryHandler(handle_factor_rating, pattern='^rating_')],
+            ASK_F3_PERSISTENCE: [CallbackQueryHandler(handle_factor_rating, pattern='^rating_')],
+            ASK_F4_FLEXIBILITY: [CallbackQueryHandler(handle_factor_rating, pattern='^rating_')],
+            ASK_F5_EMOTIONAL_INTELLIGENCE: [CallbackQueryHandler(handle_factor_rating, pattern='^rating_')],
+            ASK_F6_HEALTH_ENERGY: [CallbackQueryHandler(handle_factor_rating, pattern='^rating_')],
+            ASK_F7_SELF_PERCEPTION: [CallbackQueryHandler(handle_factor_rating, pattern='^rating_')],
+            ASK_F8_ENVIRONMENT_SUPPORT: [CallbackQueryHandler(handle_factor_rating, pattern='^rating_')],
+            ASK_F9_RESOURCE_ACCESS: [CallbackQueryHandler(handle_factor_rating, pattern='^rating_')],
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_factor_dialog, pattern='^cancel_factor_dialog$'),
+            CommandHandler("cancel", cancel_factor_dialog),
+            CallbackQueryHandler(back_to_main_menu, pattern='^back_to_main_menu$')
+        ],
+        allow_reentry=True,
+        per_message=False
+    )
 
-    # Исправлено: .application_data() больше не используется в ApplicationBuilder
-    # Вместо этого, bot_data устанавливается после создания application
-    application = application_builder.build()
+    # --- ПОРЯДОК РЕГИСТРАЦИИ ОБРАБОТЧИКОВ ОЧЕНЬ ВАЖЕН ---
+    # Более специфичные хендлеры должны быть зарегистрированы раньше, чем более общие.
 
-    # Добавляем app_data в application.bot_data
-    application.bot_data.update(app_data)
+    application.add_handler(CommandHandler("start", start))  # Команда /start
+    application.add_handler(income_conversation_handler)  # Диалог по доходу
+    application.add_handler(factor_survey_handler)  # Диалог по факторам
 
-    logger.info("Приложение бота успешно создано.")
+    # Хендлеры для CallbackQuery (кнопок)
+    # Сначала специфичные для детализации способа и возврата к списку
+    application.add_handler(CallbackQueryHandler(show_income_method_details, pattern='^income_method_details_'))
+    application.add_handler(CallbackQueryHandler(show_recommended_methods,
+                                                 pattern='^mode_income_recalculate$'))  # <-- ЭТОТ ДОЛЖЕН БЫТЬ ПЕРЕД ОБЩИМ 'mode_'
 
-    # Регистрация обработчиков
-    for handler_obj in handlers.ALL_HANDLERS:
-        application.add_handler(handler_obj)
+    # Затем более общие хендлеры для кнопок
+    application.add_handler(CallbackQueryHandler(handle_main_menu_choice,
+                                                 pattern='^mode_'))  # <-- ЭТОТ ДОЛЖЕН БЫТЬ ПОСЛЕ СПЕЦИФИЧНЫХ 'mode_'
+    application.add_handler(CallbackQueryHandler(back_to_main_menu, pattern='^back_to_main_menu$'))
 
-    application.add_handler(handlers.unknown_command_handler)
-    application.add_handler(handlers.unknown_text_handler)
-    logger.info("Обработчики успешно добавлены.")
+    print("Бот запущен. Ожидание команд...")
+    await application.run_polling()
 
-    logger.info("Запуск бота (опрос обновлений)...")
-    try:
-        application.run_polling()
-    except Exception as e:
-        logger.critical(f"Критическая ошибка во время работы бота: {e}")
-    finally:
-        logger.info("Бот остановлен.")
-
-
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    asyncio.run(main())
