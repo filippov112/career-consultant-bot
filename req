@@ -1,4 +1,0 @@
-pip install python-telegram-bot==21.0
-pip install psycopg2-binary==2.9.10
-pip install SQLAlchemy==2.0.30
-pip install python-dotenv==1.0.1
